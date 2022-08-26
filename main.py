@@ -1,25 +1,62 @@
 import cv2
-from cv2 import VideoCapture
+import tensorflow as tf
+from tensorflow.keras.models import load_model
 import numpy as np
-import pickle
-import dlib
+
+face_cascade = cv2.CascadeClassifier('D:\\Data\\work\\haarcascade_frontalface_default.xml')
+eye_cascade = cv2.CascadeClassifier('D:\\Data\\work\\haarcascade_eye.xml')
+model = load_model(r'D:\\Data\\work\\data\\model.h5')
 
 
 cap = cv2.VideoCapture(0)
-
-#detector = dlib.get_frontal_face_dector()
-
-classifier = cv2.CascadeClassifier('D:\\Data\\work\\haarcascade_righteye_2splits.xml')
-
+Score = 0
 while True:
     ret, frame = cap.read()
+    height,width = frame.shape[0:2]
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    frame_copy = frame.copy()
-    detect = classifier.detectMultiScale(gray,1.2,1)
-    for (x, y, w, h) in detect:
-        cv2.rectangle(frame,(x, y), (x+w,y+h),(0,255,0),2)
-    cv2.imshow('frame', np.hstack((frame_copy,frame)))
-    if cv2.waitKey(20) & 0xff==ord('q'):
+    faces= face_cascade.detectMultiScale(gray, scaleFactor= 1.2, minNeighbors=3)
+    eyes= eye_cascade.detectMultiScale(gray, scaleFactor= 1.1, minNeighbors=1)
+    
+    cv2.rectangle(frame, (0,height-50),(200,height),(0,0,0),thickness=cv2.FILLED)
+    
+    for (x,y,w,h) in faces:
+        cv2.rectangle(frame,pt1=(x,y),pt2=(x+w,y+h), color= (255,0,0), thickness=3 )
+        
+    for (ex,ey,ew,eh) in eyes:
+        cv2.rectangle(frame,pt1=(ex,ey),pt2=(ex+ew,ey+eh), color= (255,0,0), thickness=3 )
+        
+        # preprocessing steps
+        eye= frame[ey:ey+eh,ex:ex+ew]
+        eye = cv2.cvtColor(eye, cv2.COLOR_BGR2GRAY)
+        eye= cv2.resize(eye,(80,80))
+        eye= eye/255
+        eye= eye.reshape(80,80,1)
+        eye= np.expand_dims(eye,axis=0)
+        # preprocessing is done now model prediction
+        prediction = model.predict(eye)
+        
+        # if eyes are closed
+        if prediction[0][0]>0.30:
+            cv2.putText(frame,'closed',(10,height-30),fontFace=cv2.FONT_HERSHEY_COMPLEX_SMALL,fontScale=1,color=(255,255,255),
+                       thickness=1,lineType=cv2.LINE_AA)
+            cv2.putText(frame,'Score'+str(Score),(100,height-30),fontFace=cv2.FONT_HERSHEY_COMPLEX_SMALL,fontScale=1,color=(255,255,255),
+                       thickness=1,lineType=cv2.LINE_AA)
+            Score=Score+1
+            if(Score>15):
+                pass    
+        # if eyes are open
+        elif prediction[0][1]>0.90:
+            cv2.putText(frame,'open',(10,height-10),fontFace=cv2.FONT_HERSHEY_COMPLEX_SMALL,fontScale=1,color=(255,255,255),
+                       thickness=1,lineType=cv2.LINE_AA)      
+            cv2.putText(frame,'Score'+str(Score),(100,height-10),fontFace=cv2.FONT_HERSHEY_COMPLEX_SMALL,fontScale=1,color=(255,255,255),
+                       thickness=1,lineType=cv2.LINE_AA)
+            Score = Score-1
+            if (Score<0):
+                Score=0
+            
+    cv2.imshow('frame',frame)
+    if cv2.waitKey(20) & 0xFF==ord('q'):
         break
-cap.release()  
-cv2.destroyAllWindows
+        
+cap.release()
+cv2.destroyAllWindows()
